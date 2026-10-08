@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Award, LockKeyhole, Play, RotateCcw, Sparkles, Trophy } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Award, LockKeyhole, Play, RotateCcw, Sparkles, Trophy, Zap } from 'lucide-react';
 import { Link } from 'wouter';
 import {
   getMemoryPairCount,
@@ -59,6 +59,7 @@ export function GameSession({ game, onGameComplete }: GameSessionProps) {
   const [completion, setCompletion] = useState<GameCompletion | null>(null);
   const [performance, setPerformance] = useState<GamePerformance>({});
   const [levelPlayed, setLevelPlayed] = useState(state.memoryLevel);
+  const [quickMode, setQuickMode] = useState(false);
   const hasFinishedRef = useRef(false);
   const bestScore = state.bestScores[game.id] ?? 0;
   const recentResult = state.recentResults.find((result) => result.gameId === game.id);
@@ -94,7 +95,7 @@ export function GameSession({ game, onGameComplete }: GameSessionProps) {
       game.id === 'reflexo'
         ? 20
         : game.id === 'memoria'
-          ? getMemoryTimeLimit(nextLevel)
+          ? getMemoryTimeLimit(nextLevel, quickMode)
           : null,
     );
     setPerformance({});
@@ -103,13 +104,16 @@ export function GameSession({ game, onGameComplete }: GameSessionProps) {
 
   const unit = game.id === 'corrida' ? 'm' : 'pts';
   const scoreLabel = game.id === 'corrida' ? 'DISTÂNCIA' : 'PONTUAÇÃO';
-  const isMemoryUntimed = game.id === 'memoria' && getMemoryTimeLimit(levelPlayed) === null;
+  const isMemoryUntimed = game.id === 'memoria' && getMemoryTimeLimit(levelPlayed, quickMode) === null;
   const timerLabel = game.id === 'corrida' ? 'MODO' : isMemoryUntimed ? 'NÍVEL' : 'TEMPO';
+  const visibleTimeRemaining = phase === 'ready' && game.id === 'memoria'
+    ? getMemoryTimeLimit(levelPlayed, quickMode)
+    : timeRemaining;
   const timerValue = game.id === 'corrida'
     ? 'INFINITO'
     : isMemoryUntimed
       ? String(levelPlayed).padStart(2, '0')
-      : formatDuration(timeRemaining);
+      : formatDuration(visibleTimeRemaining);
   const pairCount = getMemoryPairCount(levelPlayed);
 
   return (
@@ -141,9 +145,20 @@ export function GameSession({ game, onGameComplete }: GameSessionProps) {
               {game.id === 'corrida'
                 ? 'Sem cronômetro. Desvie dos obstáculos e tente ir mais longe a cada corrida.'
                 : game.id === 'memoria'
-                  ? `Nível ${levelPlayed}: ${pairCount} pares${isMemoryUntimed ? ', sem limite de tempo' : ` em ${getMemoryTimeLimit(levelPlayed)} segundos`}.`
+                  ? `Nível ${levelPlayed}: ${pairCount} pares${isMemoryUntimed ? ', sem limite de tempo' : ` em ${getMemoryTimeLimit(levelPlayed, quickMode)} segundos`}. ${quickMode ? 'Modo rápido: bônus por concluir.' : ''}`
                   : 'Você tem 20 segundos. Os alvos ficam menores e mais rápidos.'}
             </p>
+            {game.id === 'memoria' && (
+              <button
+                type="button"
+                className={`memory-quick-toggle ${quickMode ? 'is-active' : ''}`}
+                onClick={() => setQuickMode((enabled) => !enabled)}
+                aria-pressed={quickMode}
+                data-testid="button-memory-quick-mode"
+              >
+                <Zap size={14} /> Modo rápido: {quickMode ? 'ligado' : 'desligado'}
+              </button>
+            )}
             <button className="button-primary" onClick={begin} data-testid="button-start-game">
               <Play size={16} fill="currentColor" /> {game.id === 'corrida' ? 'Começar corrida' : 'Começar partida'}
             </button>
@@ -159,6 +174,7 @@ export function GameSession({ game, onGameComplete }: GameSessionProps) {
             level={levelPlayed}
             characterId={state.selectedCharacterId}
             skinId={state.selectedSkinId}
+            quickMode={quickMode}
             onProgress={onProgress}
             onFinish={finish}
           />
@@ -203,18 +219,34 @@ export function GameSession({ game, onGameComplete }: GameSessionProps) {
             {game.id === 'reflexo' && (
               <div className="result-detail">
                 <span>{performance.reflexReactionsMs?.length ?? 0} acertos</span>
+                <span>{(performance.reflexFalseHits ?? 0) + (performance.reflexMisses ?? 0)} erros</span>
+                <span>Precisão {(() => {
+                  const attempts = (performance.reflexReactionsMs?.length ?? 0) + (performance.reflexFalseHits ?? 0) + (performance.reflexMisses ?? 0);
+                  return attempts ? `${Math.round(((performance.reflexReactionsMs?.length ?? 0) / attempts) * 100)}%` : '0%';
+                })()}</span>
                 <span>Média {performance.reflexReactionsMs?.length
                   ? `${Math.round(performance.reflexReactionsMs.reduce((sum, value) => sum + value, 0) / performance.reflexReactionsMs.length)} ms`
                   : '—'}</span>
-                <span>Melhor {state.bestReactionMs === null ? '—' : `${state.bestReactionMs} ms`}</span>
+                <span>Melhor nesta partida {performance.reflexReactionsMs?.length ? `${Math.min(...performance.reflexReactionsMs)} ms` : '—'}</span>
+                <span>Maior combo {performance.reflexMaxCombo ?? 0}</span>
+                <span>Recorde {Math.max(bestScore, score)} pts</span>
               </div>
             )}
             {game.id === 'memoria' && (
-              <p className="game-result-note">
-                {performance.memoryCleared
-                  ? `Nível ${levelPlayed} completo. Próximo: nível ${state.memoryLevel}, ${getMemoryPairCount(state.memoryLevel)} pares.`
-                  : `Tente o nível ${levelPlayed} de novo para liberar o próximo tabuleiro.`}
-              </p>
+              <>
+                <div className="result-detail">
+                  <span>{performance.memoryMoves ?? 0} tentativas</span>
+                  <span>{performance.memoryErrors ?? 0} erros</span>
+                  <span>{performance.memoryElapsedSeconds ?? 0}s</span>
+                  <span>Maior sequência {performance.memoryMaxCombo ?? 0}</span>
+                  {performance.memoryQuickMode && <span>Bônus do modo rápido aplicado</span>}
+                </div>
+                <p className="game-result-note">
+                  {performance.memoryCleared
+                    ? `Nível ${levelPlayed} completo. Próximo: nível ${state.memoryLevel}, ${getMemoryPairCount(state.memoryLevel)} pares.`
+                    : `Tente o nível ${levelPlayed} de novo para liberar o próximo tabuleiro.`}
+                </p>
+              </>
             )}
             {game.id === 'corrida' && (
               <div className="result-detail race-result-detail" data-testid="race-result-details">

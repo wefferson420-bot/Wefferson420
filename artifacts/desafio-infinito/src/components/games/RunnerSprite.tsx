@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { COSMETICS } from '@/lib/arcade-state';
+import { SKINS_BY_ID, SKIN_RARITIES } from '@/lib/skin-catalog';
 
 export interface RunnerSpriteProps {
   characterId: string;
@@ -8,6 +9,7 @@ export interface RunnerSpriteProps {
   animation?: 'RUN' | 'JUMP' | 'ATTACK' | 'HIT';
   className?: string;
   style?: CSSProperties;
+  effects?: boolean;
 }
 
 const labels: Record<string, string> = {
@@ -166,6 +168,45 @@ function CharacterArt({ characterId }: { characterId: string }) {
   }
 }
 
+function SkinDetails({
+  appearance,
+  detailLevel,
+}: {
+  appearance: NonNullable<(typeof COSMETICS)[number]['appearance']>;
+  detailLevel: number;
+}) {
+  return (
+    <>
+      {appearance.headwear === 'cap' && <path d="M32 28q18-20 36 0l8 5H27Z" fill="var(--skin-primary)" stroke="var(--skin-secondary)" strokeWidth="3" />}
+      {appearance.headwear === 'hood' && <path d="M29 43q-6-27 21-33 27 6 21 33l-8-4q-13-9-26 0Z" fill="var(--skin-secondary)" stroke="var(--skin-primary)" strokeWidth="3" />}
+      {appearance.headwear === 'crown' && <path d="m33 31 2-15 9 8 6-14 7 14 9-8 2 15Z" fill="var(--skin-primary)" stroke="var(--skin-secondary)" strokeWidth="2.5" />}
+      {appearance.headwear === 'visor' && <path d="M31 34q19-10 38 0l-4 8H35Z" fill="var(--skin-secondary)" stroke="var(--skin-primary)" strokeWidth="2.5" />}
+      {appearance.headwear === 'horn-helm' && <path d="m34 37-10-20 17 10 9-17 9 17 17-10-10 20Z" fill="var(--skin-secondary)" stroke="var(--skin-primary)" strokeWidth="3" />}
+      {appearance.headwear === 'halo' && <ellipse cx="50" cy="12" rx="20" ry="5" fill="none" stroke="var(--skin-primary)" strokeWidth="3" />}
+      {appearance.headwear === 'feather' && <path d="M49 28q-3-20 17-27-3 18-17 27m2-4 10-12" fill="var(--skin-primary)" stroke="var(--skin-secondary)" strokeWidth="2" />}
+      {appearance.facewear === 'mask' && <path d="M33 43q17 6 34 0v11q-17 9-34 0Z" fill="var(--skin-secondary)" stroke="var(--skin-primary)" strokeWidth="2" />}
+      {appearance.facewear === 'glasses' && <g fill="none" stroke="var(--skin-primary)" strokeWidth="3"><circle cx="42" cy="47" r="6" /><circle cx="59" cy="47" r="6" /><path d="M48 47h5m-19-1-4-2m35 2 4-2" /></g>}
+      {appearance.facewear === 'war-paint' && <path d="m34 45 13 3m6 0 13-3m-30 6 7 2m10 0 7-2" fill="none" stroke="var(--skin-primary)" strokeWidth="3" strokeLinecap="round" />}
+      {appearance.facewear === 'breather' && <g><path d="M36 47q14-7 28 0v11q-14 7-28 0Z" fill="var(--skin-secondary)" stroke="var(--skin-primary)" strokeWidth="2" /><path d="M41 52h3m12 0h3" stroke="#fff" strokeWidth="2" /></g>}
+      {appearance.outfit === 'sport' && <path d="M34 70h32m-16-7v28" fill="none" stroke="var(--skin-primary)" strokeWidth="3" />}
+      {appearance.outfit === 'armor' && <g fill="var(--skin-secondary)" stroke="var(--skin-primary)" strokeWidth="2"><path d="m35 64 15 5 15-5-3 13H38Z" /><path d="m38 80 12 4 12-4-2 12H40Z" /></g>}
+      {appearance.outfit === 'tech' && <g fill="none" stroke="var(--skin-primary)" strokeWidth="2"><path d="M38 68h24M38 76h9m6 0h9M39 87h22" /><circle cx="50" cy="78" r="3" fill="var(--skin-primary)" /></g>}
+      {appearance.outfit === 'robe' && <path d="m38 61 12 9 12-9-7 31-5 7-5-7Z" fill="var(--skin-secondary)" stroke="var(--skin-primary)" strokeWidth="2" />}
+      {appearance.outfit === 'adventure' && <g fill="none" stroke="var(--skin-primary)" strokeWidth="3"><path d="m35 65 15 9 15-9m-15 9v19" /><circle cx="61" cy="82" r="3" fill="var(--skin-primary)" /></g>}
+      {appearance.outfit === 'jersey' && <g fill="none" stroke="var(--skin-primary)" strokeWidth="3"><path d="M36 66h28M36 72h28" /><path d="M45 82q5-5 10 0t0 9q-5 5-10 0Z" /></g>}
+      {appearance.boots === 'greaves' && <g fill="var(--skin-secondary)" stroke="var(--skin-primary)" strokeWidth="2"><path d="m32 101 12 2-3 12H29Z" /><path d="m56 103 12-2 4 14H58Z" /></g>}
+      {appearance.boots === 'high-boots' && <g fill="none" stroke="var(--skin-primary)" strokeWidth="4"><path d="m36 101-2 13m27-13 3 13" /><path d="M30 107h11m17 0h12" strokeWidth="2" /></g>}
+      {appearance.boots === 'hover-boots' && <g fill="none" stroke="var(--skin-primary)" strokeWidth="2"><path d="M27 117h20m9 0h20" /><path d="M34 120h8m20 0h8" strokeDasharray="2 3" /></g>}
+      {appearance.back === 'cape' && <path d="M33 61q-12 22-5 43l17-8-3-31m17-4q15 20 9 42l-17-8 3-31Z" fill="var(--skin-secondary)" opacity=".75" />}
+      {appearance.back === 'pack' && <rect x="18" y="63" width="12" height="27" rx="5" fill="var(--skin-secondary)" stroke="var(--skin-primary)" strokeWidth="2" />}
+      {appearance.back === 'wings' && <g fill="var(--skin-secondary)" stroke="var(--skin-primary)" strokeWidth="2"><path d="M35 65Q15 48 13 69l15 16-12 4q13 11 23 2Z" /><path d="M65 65q20-17 22 4L72 85l12 4q-13 11-23 2Z" /></g>}
+      {appearance.back === 'drone' && <g fill="var(--skin-primary)" stroke="var(--skin-secondary)" strokeWidth="2"><circle cx="17" cy="59" r="7" /><path d="m12 59 10 0m-5-5v10" /><circle cx="83" cy="61" r="5" /></g>}
+      {appearance.back === 'scarf' && <path d="M37 57q-6 18-20 27l12 1q10-8 15-25m19-3q6 18 20 27l-12 1q-10-8-15-25" fill="none" stroke="var(--skin-primary)" strokeWidth="5" />}
+      {detailLevel >= 6 && <path d="m50 67 4 6-4 6-4-6Z" fill="var(--skin-primary)" stroke="#fff" strokeWidth="1" />}
+    </>
+  );
+}
+
 export function RunnerSprite({
   characterId,
   skinId = 'aurora',
@@ -173,6 +214,7 @@ export function RunnerSprite({
   animation,
   className = '',
   style,
+  effects = true,
 }: RunnerSpriteProps) {
   const skinClass = skinId === 'pixel'
     ? 'runner-skin-pixel'
@@ -185,12 +227,17 @@ export function RunnerSprite({
           : skinId === 'aurora'
             ? 'runner-skin-aurora'
             : 'runner-skin-custom';
-  const skin = COSMETICS.find((item) => item.id === skinId && item.kind === 'skin');
+  const skin = SKINS_BY_ID.get(skinId) ?? COSMETICS.find((item) => item.id === skinId && item.kind === 'skin');
+  const rarityConfig = SKIN_RARITIES.find((rarity) => rarity.id === skin?.rarity) ?? SKIN_RARITIES[0];
+  const appearance = skin?.appearance;
+  const visual = rarityConfig.visual;
+  const showTrail = effects && (visual.trail || ['trail', 'comet', 'pixel', 'pulse', 'nova'].includes(skin?.look ?? ''));
   const skinStyle = {
     ...style,
     '--skin-hue': `${skin?.hue ?? 0}deg`,
     '--skin-primary': skin?.colors[0] ?? '#78f0cf',
     '--skin-secondary': skin?.colors[1] ?? '#8068e9',
+    '--skin-aura-strength': effects ? visual.auraStrength : 0.04,
   } as CSSProperties;
   const characterName = labels[characterId] ?? labels.robot;
 
@@ -199,14 +246,27 @@ export function RunnerSprite({
       className={`runner-sprite ${running ? 'is-running' : ''} ${animation ? `runner-state-${animation.toLowerCase()}` : ''} ${skinClass} ${className}`.trim()}
       viewBox="0 0 100 122"
       role="img"
-      aria-label={characterName}
+      aria-label={`${characterName}${skin ? `, skin ${skin.name}` : ''}`}
       style={skinStyle}
       focusable="false"
     >
-      <ellipse className="runner-skin-aura" cx="50" cy="83" rx="42" ry="35" />
+      <ellipse className={`runner-skin-aura rarity-visual-${rarityConfig.visualLevel}`} cx="50" cy="83" rx="42" ry="35" />
       <ellipse className="runner-shadow" cx="50" cy="116" rx="31" ry="5" fill="#08070d" opacity=".55" />
-      <path className="runner-skin-trail" d="M13 104h13m-17 7h17m50-7h12" />
-      <g className="runner-legs runner-character-art"><CharacterArt characterId={characterId} /></g>
+      {showTrail && <path className={`runner-skin-trail ${visual.trail ? 'is-advanced-trail' : ''}`} d="M13 104h13m-17 7h17m50-7h12" />}
+      {effects && Array.from({ length: visual.particleCount }, (_, index) => (
+        <circle
+          key={`particle-${index}`}
+          className={`runner-skin-particle runner-skin-particle-${index + 1}`}
+          cx={18 + ((index * 19) % 66)}
+          cy={27 + ((index * 23) % 66)}
+          r={index === 0 ? 2.1 : 1.5}
+        />
+      ))}
+      {appearance?.back && <g className="runner-back-gear"><SkinDetails appearance={{ ...appearance, headwear: 'none', facewear: 'none', outfit: 'none', boots: 'none' }} detailLevel={0} /></g>}
+      <g className={`runner-legs runner-character-art outfit-${appearance?.outfit ?? 'classic'}`}><CharacterArt characterId={characterId} />{appearance && <SkinDetails appearance={{ ...appearance, back: 'none' }} detailLevel={rarityConfig.visual.detailLevel} />}</g>
+      {effects && visual.jumpEffect && animation === 'JUMP' && <ellipse className="runner-jump-ring" cx="50" cy="111" rx="27" ry="5" />}
+      {effects && visual.specialEffect && animation === 'ATTACK' && <path className="runner-attack-flare" d="M72 51 92 39M75 58l19-4M71 45l11-18" />}
+      {effects && visual.entryEffect && <ellipse className="runner-entry-ring" cx="50" cy="70" rx="38" ry="57" />}
       {animation === 'ATTACK' && (
         <g className="runner-sword" aria-hidden="true">
           <path d="m73 68 17-35 4 2-13 38-5 3Z" fill="#dff7ff" stroke="#46567d" strokeWidth="2" />

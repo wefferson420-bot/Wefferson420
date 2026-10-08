@@ -33,6 +33,7 @@ export interface MemoryMatchGameProps extends GameModuleProps {
   level: number;
   characterId: string;
   skinId: string;
+  quickMode?: boolean;
 }
 
 export function MemoryMatchGame({
@@ -40,26 +41,35 @@ export function MemoryMatchGame({
   level,
   characterId,
   skinId,
+  quickMode = false,
   onProgress,
   onFinish,
 }: MemoryMatchGameProps) {
   const pairCount = getMemoryPairCount(level);
-  const timeLimit = getMemoryTimeLimit(level);
+  const timeLimit = getMemoryTimeLimit(level, quickMode);
   const [cards, setCards] = useState<MemoryCard[]>([]);
   const [flipped, setFlipped] = useState<number[]>([]);
+  const [errorCards, setErrorCards] = useState<number[]>([]);
   const [matchedPairs, setMatchedPairs] = useState<Set<number>>(new Set());
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState<number | null>(timeLimit);
   const [matchStreak, setMatchStreak] = useState(0);
+  const [moves, setMoves] = useState(0);
+  const [errors, setErrors] = useState(0);
+  const [feedback, setFeedback] = useState('');
   const flippedRef = useRef<number[]>([]);
   const matchedRef = useRef<Set<number>>(new Set());
   const scoreRef = useRef(0);
   const streakRef = useRef(0);
+  const maxStreakRef = useRef(0);
+  const movesRef = useRef(0);
+  const errorsRef = useRef(0);
   const lockedRef = useRef(false);
   const finishedRef = useRef(false);
   const startedAtRef = useRef(0);
   const firstCardAtRef = useRef(0);
-  const timeoutIdsRef = useRef<number[]>([]);
+  const flipTimeoutRef = useRef<number | null>(null);
+  const feedbackTimeoutRef = useRef<number | null>(null);
 
   const updateScore = (next: number) => {
     scoreRef.current = Math.max(0, next);
@@ -73,11 +83,17 @@ export function MemoryMatchGame({
     const elapsedSeconds = Math.floor((Date.now() - startedAtRef.current) / 1000);
     const targetSeconds = timeLimit ?? pairCount * 9;
     const speedBonus = cleared ? Math.min(24, Math.floor(Math.max(0, targetSeconds - elapsedSeconds) / 12)) : 0;
+    const quickBonus = cleared && quickMode ? 4 : 0;
     onFinish(scoreRef.current, {
       memoryLevel: level,
       memoryCleared: cleared,
-      xpBonus: speedBonus,
-      coinBonus: Math.min(14, Math.floor(speedBonus / 2)),
+      memoryElapsedSeconds: elapsedSeconds,
+      memoryMoves: movesRef.current,
+      memoryErrors: errorsRef.current,
+      memoryMaxCombo: maxStreakRef.current,
+      memoryQuickMode: quickMode,
+      xpBonus: speedBonus + quickBonus,
+      coinBonus: Math.min(14, Math.floor(speedBonus / 2)) + (quickMode && cleared ? 2 : 0),
     });
   };
 
@@ -93,17 +109,28 @@ export function MemoryMatchGame({
     matchedRef.current = new Set();
     scoreRef.current = 0;
     streakRef.current = 0;
-    timeoutIdsRef.current = [];
+    maxStreakRef.current = 0;
+    movesRef.current = 0;
+    errorsRef.current = 0;
+    if (flipTimeoutRef.current !== null) window.clearTimeout(flipTimeoutRef.current);
+    if (feedbackTimeoutRef.current !== null) window.clearTimeout(feedbackTimeoutRef.current);
+    flipTimeoutRef.current = null;
+    feedbackTimeoutRef.current = null;
     setCards(nextDeck);
     setFlipped([]);
+    setErrorCards([]);
     setMatchedPairs(new Set());
     setScore(0);
     setMatchStreak(0);
+    setMoves(0);
+    setErrors(0);
+    setFeedback('');
     setTimeLeft(timeLimit);
     onProgress(0, timeLimit);
 
     if (timeLimit === null) return () => {
-      timeoutIdsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      if (flipTimeoutRef.current !== null) window.clearTimeout(flipTimeoutRef.current);
+      if (feedbackTimeoutRef.current !== null) window.clearTimeout(feedbackTimeoutRef.current);
     };
 
     const timer = window.setInterval(() => {
@@ -118,9 +145,10 @@ export function MemoryMatchGame({
 
     return () => {
       window.clearInterval(timer);
-      timeoutIdsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      if (flipTimeoutRef.current !== null) window.clearTimeout(flipTimeoutRef.current);
+      if (feedbackTimeoutRef.current !== null) window.clearTimeout(feedbackTimeoutRef.current);
     };
-  }, [playing, pairCount, timeLimit, level, onProgress]);
+  }, [playing, pairCount, timeLimit, level, quickMode, onProgress]);
 
   const revealCard = (index: number) => {
     if (
@@ -144,11 +172,14 @@ export function MemoryMatchGame({
     const [firstIndex, secondIndex] = nextFlipped;
     const firstCard = cards[firstIndex];
     const secondCard = cards[secondIndex];
+    movesRef.current += 1;
+    setMoves(movesRef.current);
 
     if (firstCard && secondCard && firstCard.pairId === secondCard.pairId) {
       const elapsedSeconds = Math.floor((Date.now() - startedAtRef.current) / 1000);
       const revealDelay = Math.max(250, Math.min(800, Date.now() - firstCardAtRef.current + 180));
       streakRef.current += 1;
+      maxStreakRef.current = Math.max(maxStreakRef.current, streakRef.current);
       setMatchStreak(streakRef.current);
       const speedBonus = Math.max(0, 28 - Math.floor(elapsedSeconds / 5));
       const chainBonus = Math.min(24, Math.max(0, streakRef.current - 1) * 4);
@@ -157,7 +188,9 @@ export function MemoryMatchGame({
       nextMatched.add(firstCard.pairId);
       matchedRef.current = nextMatched;
 
-      const timeoutId = window.setTimeout(() => {
+      setFeedback(`Par encontrado! Sequência ${streakRef.current}.`);
+      flipTimeoutRef.current = window.setTimeout(() => {
+        flipTimeoutRef.current = null;
         setMatchedPairs(new Set(matchedRef.current));
         flippedRef.current = [];
         setFlipped([]);
@@ -165,20 +198,24 @@ export function MemoryMatchGame({
         firstCardAtRef.current = 0;
         if (matchedRef.current.size >= pairCount) finish(true);
       }, revealDelay);
-      timeoutIdsRef.current.push(timeoutId);
       return;
     }
 
     streakRef.current = 0;
     setMatchStreak(0);
+    errorsRef.current += 1;
+    setErrors(errorsRef.current);
+    setErrorCards([firstIndex, secondIndex]);
+    setFeedback('Não formou par. A sequência foi quebrada.');
     updateScore(scoreRef.current - 10);
-    const timeoutId = window.setTimeout(() => {
+    flipTimeoutRef.current = window.setTimeout(() => {
+      flipTimeoutRef.current = null;
       flippedRef.current = [];
       setFlipped([]);
+      setErrorCards([]);
       lockedRef.current = false;
       firstCardAtRef.current = 0;
     }, 720);
-    timeoutIdsRef.current.push(timeoutId);
   };
 
   const columns = pairCount <= 8 ? 4 : pairCount <= 12 ? 5 : pairCount <= 18 ? 6 : 7;
@@ -198,21 +235,22 @@ export function MemoryMatchGame({
         {cards.map((card, index) => {
           const isOpen = flipped.includes(index) || matchedPairs.has(card.pairId);
           const isMatched = matchedPairs.has(card.pairId);
+          const symbol = CARD_SYMBOLS[card.pairId] ?? String(card.pairId + 1).padStart(2, '0');
           const hue = (card.pairId * 47 + 260) % 360;
           return (
             <button
               type="button"
               key={card.id}
-              className={`memory-match-card ${isOpen ? 'is-open' : ''} ${isMatched ? 'is-matched' : ''}`}
+              className={`memory-match-card ${isOpen ? 'is-open' : ''} ${isMatched ? 'is-matched' : ''} ${errorCards.includes(index) ? 'is-error' : ''}`}
               onClick={() => revealCard(index)}
               disabled={isMatched || !playing}
-              aria-label={isOpen ? `Carta ${index + 1}, símbolo ${CARD_SYMBOLS[card.pairId]}` : `Revelar carta ${index + 1}`}
+              aria-label={isOpen ? `Carta ${index + 1}, símbolo ${symbol}` : `Revelar carta ${index + 1}`}
               aria-pressed={isOpen}
               style={{ '--card-hue': hue } as React.CSSProperties}
               data-testid={`button-memory-card-${index}`}
             >
               <span className="memory-card-back-mark" aria-hidden="true" />
-              {isOpen && <span className="memory-card-symbol" aria-hidden="true">{CARD_SYMBOLS[card.pairId]}</span>}
+              {isOpen && <span className="memory-card-symbol" aria-hidden="true">{symbol}</span>}
             </button>
           );
         })}
@@ -220,10 +258,14 @@ export function MemoryMatchGame({
       <div className="memory-match-footer">
         <span>{matchedCount} <i>/</i> {pairCount} PARES</span>
         <span>SEQUÊNCIA <b>{matchStreak}</b></span>
+        <span>TENTATIVAS <b>{moves}</b></span>
+        <span>ERROS <b>{errors}</b></span>
+        {timeLeft !== null && <span>TEMPO <b>{timeLeft}s</b></span>}
       </div>
+      <p className={`memory-match-feedback ${feedback.startsWith('Par') ? 'is-success' : feedback ? 'is-error' : ''}`} aria-live="polite">{feedback || `${matchedCount} de ${pairCount} pares encontrados`}</p>
       <p className="memory-match-hint">
         {timeLimit
-          ? 'Cada acerto rápido vale mais. Erros descontam pontos.'
+          ? `Cada acerto rápido vale mais. Erros descontam pontos.${quickMode ? ' Modo rápido concluído dá bônus extra.' : ''}`
           : 'Observe os símbolos, encontre os pares e avance para um tabuleiro maior.'}
       </p>
       <span className="sr-only" aria-live="polite">
