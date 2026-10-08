@@ -16,6 +16,7 @@ import {
   Trophy,
   Zap,
 } from 'lucide-react';
+import { COSMETICS } from '@/lib/arcade-state';
 import './meta-pages.css';
 
 export type RankingPageProps = {
@@ -161,7 +162,7 @@ export function RankingPage({
             {history.map((item) => (
               <article className="history-row" key={item.id}>
                 <span className="history-medal"><Trophy size={16} /></span>
-                <div className="history-info"><strong>{item.tierLabel}</strong><span>{date(item.endedAt)} · {number(item.points)} pontos</span>{item.cosmeticAwarded && <span className="skin-unlock-badge"><Sparkles size={11} /> Skin desbloqueada: {item.cosmeticAwarded.replace(/-/g, ' ')}</span>}</div>
+                <div className="history-info"><strong>{item.tierLabel}</strong><span>{date(item.endedAt)} · {number(item.points)} pontos</span>{item.cosmeticAwarded && <span className="skin-unlock-badge"><Sparkles size={11} /> Skin desbloqueada: {COSMETICS.find((cosmetic) => cosmetic.id === item.cosmeticAwarded)?.name ?? 'visual especial'}</span>}</div>
                 <RewardLine coins={item.coinsAwarded} xp={item.xpAwarded} />
               </article>
             ))}

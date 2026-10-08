@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { updateRaceAdaptation } from './race-generation';
-import { SKINS, type SkinRarity } from './skin-catalog';
+import { SKINS, type SkinAppearance, type SkinRarity } from './skin-catalog';
 
 export type PlayableGameId = 'reflexo' | 'memoria' | 'corrida';
 export type GameId = PlayableGameId | 'toque-rapido';
@@ -20,6 +20,7 @@ export interface Cosmetic {
   look: string;
   hue?: number;
   unlockTier?: RankTierId;
+  appearance?: SkinAppearance;
 }
 
 export interface GameResult {
@@ -86,6 +87,7 @@ export interface ArcadeState {
   reflexHits: number;
   reflexFalseHits: number;
   reflexMisses: number;
+  reflexMaxCombo: number;
   reflexTotalReactionMs: number;
   reflexReactionCount: number;
   bestReactionMs: number | null;
@@ -117,9 +119,15 @@ export interface GamePerformance {
   raceSequenceKeys?: string[];
   memoryLevel?: number;
   memoryCleared?: boolean;
+  memoryElapsedSeconds?: number;
+  memoryMoves?: number;
+  memoryErrors?: number;
+  memoryMaxCombo?: number;
+  memoryQuickMode?: boolean;
   reflexReactionsMs?: number[];
   reflexFalseHits?: number;
   reflexMisses?: number;
+  reflexMaxCombo?: number;
   xpBonus?: number;
   coinBonus?: number;
 }
@@ -205,6 +213,7 @@ const initialState: ArcadeState = {
   reflexHits: 0,
   reflexFalseHits: 0,
   reflexMisses: 0,
+  reflexMaxCombo: 0,
   reflexTotalReactionMs: 0,
   reflexReactionCount: 0,
   bestReactionMs: null,
@@ -350,6 +359,7 @@ function migrateState(raw: Record<string, unknown>): ArcadeState {
     reflexHits: finiteNonNegative(raw.reflexHits),
     reflexFalseHits: finiteNonNegative(raw.reflexFalseHits),
     reflexMisses: finiteNonNegative(raw.reflexMisses),
+    reflexMaxCombo: finiteNonNegative(raw.reflexMaxCombo),
     reflexTotalReactionMs: finiteNonNegative(raw.reflexTotalReactionMs),
     reflexReactionCount: finiteNonNegative(raw.reflexReactionCount),
     bestReactionMs: finiteNonNegative(raw.bestReactionMs, -1) >= 0
@@ -453,13 +463,21 @@ export function getLevelProgress(totalXp: number): number {
 
 export function getMemoryPairCount(level: number): number {
   const safeLevel = Math.max(1, Math.floor(level));
-  const knownLevels = [4, 6, 8, 10, 12];
-  return knownLevels[safeLevel - 1] ?? Math.min(24, 12 + Math.max(0, safeLevel - 5) * 2);
+  if (safeLevel < 6) return 2;
+  if (safeLevel < 8) return 3;
+  if (safeLevel < 12) return 4;
+  if (safeLevel < 16) return 6;
+  if (safeLevel < 20) return 8;
+  if (safeLevel < 24) return 10;
+  if (safeLevel < 30) return 12;
+  return 15 + Math.floor((safeLevel - 30) / 2);
 }
 
-export function getMemoryTimeLimit(level: number): number | null {
-  if (level < 4) return null;
-  return Math.max(35, 120 - (Math.floor(level) - 3) * 12);
+export function getMemoryTimeLimit(level: number, quickMode = false): number | null {
+  if (level < 4 && !quickMode) return null;
+  const pairCount = getMemoryPairCount(level);
+  const regularLimit = level < 4 ? Math.max(60, 42 + pairCount * 8) : 42 + pairCount * 8;
+  return quickMode ? Math.max(25, Math.round(regularLimit * 0.72)) : regularLimit;
 }
 
 export function getRankTier(points: number): RankTier {
@@ -675,6 +693,9 @@ export function completeGame(
     reflexHits: state.reflexHits + reactions.length,
     reflexFalseHits: state.reflexFalseHits + reflexFalseHits,
     reflexMisses: state.reflexMisses + reflexMisses,
+    reflexMaxCombo: gameId === 'reflexo'
+      ? Math.max(state.reflexMaxCombo, Math.floor(finiteNonNegative(performance.reflexMaxCombo)))
+      : state.reflexMaxCombo,
     reflexTotalReactionMs: state.reflexTotalReactionMs + reactions.reduce((sum, ms) => sum + ms, 0),
     reflexReactionCount: state.reflexReactionCount + reactions.length,
     bestReactionMs: reactions.length

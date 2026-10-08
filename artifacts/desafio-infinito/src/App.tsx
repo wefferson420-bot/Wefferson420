@@ -186,12 +186,29 @@ function ShopPage({ onPurchase, onCosmeticSelect }: Pick<ArcadeCallbacks, 'onPur
   const state = useArcadeState();
   const [activeTab, setActiveTab] = useState('TUDO');
   const [activeRarity, setActiveRarity] = useState<'TODOS' | SkinRarity>('TODOS');
+  const [collectionFilter, setCollectionFilter] = useState<'TODOS' | 'COLECAO' | 'BLOQUEADAS' | 'DISPONIVEIS'>('TODOS');
+  const [sortOrder, setSortOrder] = useState<'RARIDADE' | 'PRECO_CRESCENTE' | 'PRECO_DECRESCENTE' | 'NOME'>('RARIDADE');
   const [visibleCount, setVisibleCount] = useState(24);
   const [notice, setNotice] = useState('');
   const categories = ['TUDO', 'PERSONAGENS', 'VISUAIS'];
   const rarityCounts = getSkinRarityCounts();
   const categorized = shopItems.filter(item => activeTab === 'TUDO' || (activeTab === 'PERSONAGENS' ? item.type === 'PERSONAGEM' : item.type !== 'PERSONAGEM'));
-  const filteredAll = categorized.filter((item) => activeRarity === 'TODOS' || (item.kind === 'skin' && item.rarity === activeRarity));
+  const rarityOrder = new Map(SKIN_RARITIES.map((rarity) => [rarity.id, rarity.order]));
+  const filteredAll = categorized.filter((item) => {
+    const isOwned = ownsCosmetic(state, item);
+    const locked = !isOwned && ((item.unlockTier && state.season.points < (RANK_TIERS.find((tier) => tier.id === item.unlockTier)?.minPoints ?? Infinity)) || state.coins < item.price);
+    const matchesRarity = activeRarity === 'TODOS' || (item.kind === 'skin' && item.rarity === activeRarity);
+    const matchesCollection = collectionFilter === 'TODOS'
+      || (collectionFilter === 'COLECAO' && isOwned)
+      || (collectionFilter === 'BLOQUEADAS' && locked)
+      || (collectionFilter === 'DISPONIVEIS' && !isOwned && !locked);
+    return matchesRarity && matchesCollection;
+  }).sort((first, second) => {
+    if (sortOrder === 'PRECO_CRESCENTE') return first.price - second.price || first.name.localeCompare(second.name, 'pt-BR');
+    if (sortOrder === 'PRECO_DECRESCENTE') return second.price - first.price || first.name.localeCompare(second.name, 'pt-BR');
+    if (sortOrder === 'NOME') return first.name.localeCompare(second.name, 'pt-BR');
+    return (rarityOrder.get(first.rarity) ?? -1) - (rarityOrder.get(second.rarity) ?? -1) || first.name.localeCompare(second.name, 'pt-BR');
+  });
   const filtered = filteredAll.slice(0, visibleCount);
   const featured = shopItems.find((item) => item.id === 'nina-neon') ?? shopItems[0];
   const owned = (item: Cosmetic) => ownsCosmetic(state, item);
@@ -219,14 +236,35 @@ function ShopPage({ onPurchase, onCosmeticSelect }: Pick<ArcadeCallbacks, 'onPur
   return <Shell active="loja"><div className="page-wrap">
     <div className="page-heading shop-heading"><div><SectionEyebrow>SEU ESTILO, SUAS REGRAS</SectionEyebrow><h1>Loja de itens</h1><p>Um toque de personalidade para cada partida.</p></div><div className="shop-balance"><span><Coins size={15} /></span><div><strong>{formatCoins(state.coins)}</strong><small>FICHAS</small></div></div></div>
     <section className="featured-item"><div className="featured-copy"><span className="featured-label"><Sparkles size={13} /> DESTAQUE DA SEMANA</span><h2>Chegou a<br /><i>galera neon.</i></h2><p>Personagens com brilho próprio, direto do fliperama do futuro.</p><div className="featured-price"><span><Coins size={16} /> {featured.price}</span><button onClick={() => buy(featured)} className="button-light" data-testid="button-buy-featured">{owned(featured) ? equipped(featured) ? 'Equipado' : 'Equipar' : 'Ver personagem'} <ArrowRight size={15} /></button></div></div><div className="featured-figure"><div className="figure-halo" /><div className="figure-body">NN</div><Sparkles className="figure-star" size={23} /><div className="figure-caption">NINA<br /><small>EDIÇÃO NEON</small></div></div></section>
-    <div className="section-heading shop-section-title"><div><SectionEyebrow>FEITO PRA VOCÊ</SectionEyebrow><h2>Garimpe aí</h2></div><div className="filter-row compact" role="tablist">{categories.map(category => <button key={category} className={`filter-button ${activeTab === category ? 'active' : ''}`} onClick={() => { setActiveTab(category); setActiveRarity('TODOS'); setVisibleCount(24); }} data-testid={`button-shop-filter-${category.toLowerCase()}`}>{category}</button>)}</div></div>
+     <div className="section-heading shop-section-title"><div><SectionEyebrow>FEITO PRA VOCÊ</SectionEyebrow><h2>Garimpe aí</h2></div><div className="filter-row compact" role="tablist">{categories.map(category => <button key={category} className={`filter-button ${activeTab === category ? 'active' : ''}`} onClick={() => { setActiveTab(category); setActiveRarity('TODOS'); setVisibleCount(24); }} data-testid={`button-shop-filter-${category.toLowerCase()}`}>{category}</button>)}</div></div>
     <div className="skin-catalog-summary"><Sparkles size={14} /><span><strong>125 skins</strong> em 9 raridades · os itens são desbloqueados com fichas virtuais</span></div>
-    {activeTab !== 'PERSONAGENS' && <div className="skin-rarity-filters" role="group" aria-label="Filtrar skins por raridade">
+     <div className="skin-catalog-controls">
+       <label>Exibir
+         <select value={collectionFilter} onChange={(event) => { setCollectionFilter(event.target.value as typeof collectionFilter); setVisibleCount(24); }} aria-label="Filtrar itens da coleção">
+           <option value="TODOS">Todos os itens</option><option value="COLECAO">Na coleção</option><option value="BLOQUEADAS">Bloqueados</option><option value="DISPONIVEIS">Disponíveis para compra</option>
+         </select>
+       </label>
+       <label>Ordenar
+         <select value={sortOrder} onChange={(event) => { setSortOrder(event.target.value as typeof sortOrder); setVisibleCount(24); }} aria-label="Ordenar itens da loja">
+           <option value="RARIDADE">Raridade</option><option value="PRECO_CRESCENTE">Menor preço</option><option value="PRECO_DECRESCENTE">Maior preço</option><option value="NOME">Nome</option>
+         </select>
+       </label>
+     </div>
+     {activeTab !== 'PERSONAGENS' && <div className="skin-rarity-filters" role="group" aria-label="Filtrar skins por raridade">
       <button className={`rarity-filter ${activeRarity === 'TODOS' ? 'active' : ''}`} onClick={() => { setActiveRarity('TODOS'); setVisibleCount(24); }}>Todas <span>125</span></button>
       {SKIN_RARITIES.map((rarity) => <button key={rarity.id} className={`rarity-filter rarity-filter-${rarity.id} ${activeRarity === rarity.id ? 'active' : ''}`} onClick={() => { setActiveRarity(rarity.id); setVisibleCount(24); }} data-testid={`button-skin-rarity-${rarity.id}`}>{rarity.label}<span>{rarityCounts[rarity.id]}</span></button>)}
     </div>}
     <div className="skin-result-count" aria-live="polite">{filteredAll.length} {filteredAll.length === 1 ? 'item' : 'itens'} · exibindo {filtered.length}</div>
-    <div className="shop-grid">{filtered.map(item => <article key={item.id} className={`shop-card item-${item.color} rarity-${item.rarity}`} data-testid={`card-shop-${item.id}`}><div className="item-art"><div className="item-sprite-preview"><RunnerSprite characterId={item.kind === 'personagem' ? item.id : state.selectedCharacterId} skinId={item.kind === 'skin' ? item.id : state.selectedSkinId} /></div><span className="item-type">{item.type} · {item.rarity.toUpperCase()}</span>{owned(item) && <span className="owned-tag"><Check size={11} /> NA COLEÇÃO</span>}</div><div className="item-info"><div><h3>{item.name}</h3><span>{item.description}</span></div><button className={`item-buy ${owned(item) ? 'is-owned' : ''}`} onClick={() => buy(item)} data-testid={`button-buy-${item.id}`}>{owned(item) ? equipped(item) ? 'Equipado' : 'Equipar' : item.unlockTier ? <>Categoria {RANK_TIERS.find((tier) => tier.id === item.unlockTier)?.label}</> : <><Coins size={13} /> {item.price}</>}</button></div></article>)}</div>
+     <div className="shop-grid">{filtered.map(item => {
+       const rarityLabel = SKIN_RARITIES.find((rarity) => rarity.id === item.rarity)?.label ?? item.rarity;
+       const itemLocked = !owned(item) && ((item.unlockTier && state.season.points < (RANK_TIERS.find((tier) => tier.id === item.unlockTier)?.minPoints ?? Infinity)) || state.coins < item.price);
+       return <article key={item.id} className={`shop-card item-${item.color} rarity-${item.rarity}`} data-testid={`card-shop-${item.id}`}>
+         <div className="item-art"><div className="item-sprite-preview"><RunnerSprite effects={false} characterId={item.kind === 'personagem' ? item.id : state.selectedCharacterId} skinId={item.kind === 'skin' ? item.id : state.selectedSkinId} /></div><span className="item-type">{item.type} · {rarityLabel.toUpperCase()}</span>
+           {owned(item) ? <span className="owned-tag"><Check size={11} /> {equipped(item) ? 'EQUIPADA' : 'NA COLEÇÃO'}</span> : itemLocked ? <span className="locked-tag"><LockKeyhole size={10} /> BLOQUEADA</span> : <span className="available-tag">DISPONÍVEL</span>}
+         </div>
+         <div className="item-info"><div><h3>{item.name}</h3><span>{item.description}</span></div><button className={`item-buy ${owned(item) ? 'is-owned' : ''}`} onClick={() => buy(item)} data-testid={`button-buy-${item.id}`}>{owned(item) ? equipped(item) ? 'Equipado' : 'Equipar' : item.unlockTier ? <>Categoria {RANK_TIERS.find((tier) => tier.id === item.unlockTier)?.label}</> : <><Coins size={13} /> {item.price}</>}</button></div>
+       </article>;
+     })}</div>
     {filtered.length < filteredAll.length && <button className="shop-load-more" onClick={() => setVisibleCount((current) => current + 24)}>Carregar mais skins <ArrowRight size={15} /></button>}
     {notice && <div className="shop-notice" role="status" data-testid="status-shop-notice"><Check size={15} />{notice}<button onClick={() => setNotice('')} aria-label="Fechar aviso">×</button></div>}
     <div className="shop-footnote"><LockKeyhole size={13} /> Itens e fichas são virtuais. Nenhuma compra envolve dinheiro real.</div>
@@ -239,6 +277,10 @@ function ProfilePage() {
   const level = getLevel(state.totalXp);
   const levelProgress = getLevelProgress(state.totalXp);
   const [shared, setShared] = useState(false);
+  const reflexAttempts = state.reflexHits + state.reflexFalseHits + state.reflexMisses;
+  const reflexAccuracy = reflexAttempts ? Math.round((state.reflexHits / reflexAttempts) * 100) : 0;
+  const equippedSkin = COSMETICS.find((item) => item.id === state.selectedSkinId && item.kind === 'skin');
+  const ownedSkinCount = COSMETICS.filter((item) => item.kind === 'skin' && state.ownedSkinIds.includes(item.id)).length;
   const achievements = [
     { name: 'Primeira partida', description: 'Complete seu primeiro jogo', unlocked: state.totalGames >= 1, icon: Gamepad2, color: 'purple' },
     { name: 'Fogo aceso', description: 'Jogue 3 dias seguidos', unlocked: streak >= 3, icon: Flame, color: 'gold' },
@@ -269,6 +311,19 @@ function ProfilePage() {
       <div className="stat-card"><div className="stat-icon orange"><Zap size={18} /></div><span>OBSTÁCULOS SUPERADOS</span><strong>{formatCoins(state.raceObstaclesCleared)}</strong><small>em todas as corridas</small></div>
       <div className="stat-card"><div className="stat-icon violet"><Sparkles size={18} /></div><span>BÔNUS COLETADOS</span><strong>{formatCoins(state.raceBonusesCollected)}</strong><small>durante a Corrida Infinita</small></div>
     </div>
+     <section className="profile-reflex-panel" aria-label="Estatísticas acumuladas do Reflexo">
+       <div className="panel-title"><div><SectionEyebrow>REFLEXO</SectionEyebrow><h2>Suas estatísticas</h2></div><Zap size={19} /></div>
+       <div className="profile-reflex-grid">
+         <span><b>{formatCoins(state.reflexHits)}</b> ACERTOS</span><span><b>{formatCoins(state.reflexFalseHits + state.reflexMisses)}</b> ERROS</span><span><b>{reflexAccuracy}%</b> PRECISÃO</span>
+         <span><b>{state.reflexReactionCount ? `${Math.round(state.reflexTotalReactionMs / state.reflexReactionCount)} ms` : '—'}</b> REAÇÃO MÉDIA</span><span><b>{state.bestReactionMs === null ? '—' : `${state.bestReactionMs} ms`}</b> MELHOR REAÇÃO</span><span><b>{state.reflexMaxCombo}</b> MAIOR COMBO</span>
+         <span><b>{formatCoins(state.bestScores.reflexo ?? 0)}</b> RECORDE</span>
+       </div>
+     </section>
+     <section className="profile-skin-panel">
+       <div className="profile-skin-preview"><RunnerSprite characterId={state.selectedCharacterId} skinId={state.selectedSkinId} /></div>
+       <div><SectionEyebrow>SUA COLEÇÃO</SectionEyebrow><h2>{equippedSkin?.name ?? 'Rastro Aurora'}</h2><p>{ownedSkinCount} de 125 skins desbloqueadas · visual equipado em seus jogos.</p></div>
+       <Link href="/shop" className="profile-more">Ver coleção <ChevronRight size={15} /></Link>
+     </section>
     <div className="profile-columns"><section className="record-panel"><div className="panel-title"><div><SectionEyebrow>SEUS RECORDES</SectionEyebrow><h2>Melhores marcas</h2></div><Award size={19} /></div>{games.map((game) => { const Icon = game.icon; const best = state.bestScores[game.id]; const last = state.recentResults.find((result) => result.gameId === game.id); return <div className="record-row" key={game.id}><span className={`record-game-icon ${game.color}`}><Icon size={16} /></span><div className="record-name"><b>{game.name}</b><small>{last ? `Última partida: ${formattedDate(last.playedAt)}` : 'Jogue para registrar um recorde'}</small></div><strong>{best ?? '—'} <small>{gameUnit(game.id)}</small></strong></div>; })}</section>
       <section className="badges-panel"><div className="panel-title"><div><SectionEyebrow>VITRINE</SectionEyebrow><h2>Medalhas recentes</h2></div><Crown size={19} /></div>{achievements.map((badge) => { const Icon = badge.icon; return <div className="badge-row" key={badge.name}><div className={`badge-medal badge-${badge.color}`}><Icon size={19} /></div><div><b>{badge.name}</b><small>{badge.description}</small></div><span className="badge-check">{badge.unlocked ? <Check size={13} /> : <LockKeyhole size={12} />}</span></div>; })}<Link href="/games" className="profile-more" data-testid="link-more-games">Buscar nova medalha <ChevronRight size={15} /></Link></section></div>
     <p className="profile-note"><Heart size={13} /> Seu progresso é só seu. Jogue no seu ritmo.</p>
